@@ -148,6 +148,32 @@ def get_weather(city):
     text = f"El clima en {response['location']['name']} es {translator.translate(response['current']['condition']['text'])} con una temperatura de {response['current']['temp_c']} grados centígrados."
     return (text)
 
+import yt_dlp
+import os
+import simpleaudio as sa
+
+def download_music(query):
+    """Busca y descarga el primer resultado de YouTube en MP3."""
+    ydl_opts = {
+        'format': 'bestaudio/best',
+        'outtmpl': 'downloaded_music.mp3',
+        'postprocessors': [{
+            'key': 'FFmpegExtractAudio',
+            'preferredcodec': 'mp3',
+            'preferredquality': '192',
+        }],
+    }
+    with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+        print(f"Buscando y descargando '{query}' en YouTube...")
+        ydl.download([f"ytsearch:{query}"])
+
+def play_downloaded_music():
+    """Reproduce el archivo MP3 descargado."""
+    if os.path.exists('downloaded_music.mp3'):
+        wave_obj = sa.WaveObject.from_wave_file('downloaded_music.mp3')
+        play_obj = wave_obj.play()
+        play_obj.wait_done()  # Espera a que termine la reproducción
+        
 def capture_screen():
     """Continuously capture screen and add frames to the buffer."""
     with mss.mss() as sct:
@@ -188,12 +214,12 @@ capture_thread = threading.Thread(target=capture_screen, daemon=True)
 capture_thread.start()
 
 # Keywords
-keyword_actions = ["clip", "search","weather", "time","date", "whoami"]
+keyword_actions = ["clip", "search","weather", "time","date", "whoami", "music"]
 keywords = [
-    ["clip","busc","clima","hora","fecha","eres"],
-    [None,"busq",None,None,"dia",None],
-    [None,"consulta",None,None,"mes",None],
-    [None,None,None,None,"ano",None],
+    ["clip", "busc", "clima", "hora", "fecha", "eres", "cancion"],
+    [None, "busq", None, None, "dia", None, "musica"],
+    [None, "consulta", None, None, "mes", None, "reproducir"],
+    [None, None, None, None, "ano", None, "sonido"],
 ]
 keyword_df = pd.DataFrame(keywords, columns=keyword_actions)
 
@@ -264,6 +290,10 @@ def act_on_intent(intent):
         tts(get_city_date(USER_TIMEZONE))
     elif intent == "whoami":
         play_audio_file(select_random_file_from_folder(WHOAMI_VOICELINES_PATH))
+    elif intent == "music":
+        messageMusic = whisper_listen_once(5)  # Obtiene el título o frase para la búsqueda
+        download_music(messageMusic)
+        play_downloaded_music()
 
 
 def tts(text):
