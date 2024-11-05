@@ -1,7 +1,10 @@
 
 # Imports
 import random
+import subprocess
 import os
+
+import platform
 import pandas as pd
 import unidecode
 import threading
@@ -21,19 +24,59 @@ import wave
 import audioread
 import time
 
-from meta_ai_api import MetaAI
 from translate import Translator
 
 from datetime import datetime
 
+from huggingface_hub import InferenceClient
+import json
 
-translator = Translator(from_lang="en", to_lang="es")
 
-ai = MetaAI()
+client = InferenceClient(api_key="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")
 
-prompt = "Desde ahora en adelante y hasta que se te indique lo contrario debes actuar con la personalidad de Mr. House. uno de los personajes de Fallout: New Vegas. Más exáctamente eres una IA asistente que debe actuar como si fueras el Mr House original cuando se te hable pero manteniendo tu proposito de asistir a la persona que te hable. Todas tus respuestas son en el lenguaje español. Deberás responder de forma breve, no excediendo las 300 palabras para cada consulta que se te haga. Todas tus respuestas deben ser en texto plano, esto significa sin saltos de linea o estilizado de ningún tipo. Todas tus respuestas deben ser conclusivas, es decir, no le preguntes al usuario si quiere o necesita más información "
+messages = [
+	{
+		"role": "user",
+		"content":
+		"""Desde ahora en adelante y hasta que se te indique lo contrario debes actuar con la
+		personalidad de Mr. House. uno de los personajes de Fallout: New Vegas y mantenerte
+		dentro del rol, es decir, no hables como si actuaras como MR. House, habla como si
+		fueras Mr. House. Más exáctamente eres una IA asistente que debe actuar como si fueras
+		el Mr House original cuando se te hable pero manteniendo tu proposito de asistir a la persona que te hable.
+		Todas tus respuestas son en el lenguaje español. Deberás responder de forma breve, no
+		excediendo las 300 palabras para cada consulta que se te haga. Todas tus respuestas deben
+		ser en texto plano, esto significa sin saltos de linea o estilizado de ningún tipo.
+		Todas tus respuestas deben ser conclusivas, es decir, no le preguntes al usuario si
+		quiere o necesita más información. """
 
-ai.prompt(message=prompt, new_conversation=True)
+	}
+]
+response = client.chat.completions.create(
+    model="mistralai/Mixtral-8x7B-Instruct-v0.1",
+	messages=messages,
+	max_tokens=500,
+	stream=False
+)
+initial_prompt_confirmation = dict(response)["choices"][0]["message"]
+messages.append(initial_prompt_confirmation)
+
+def write_mistral(prompt: str):
+    message = {
+        "role":"user",
+        "content":prompt
+    }
+    messages.append(message)
+
+    response = client.chat.completions.create(
+        model="mistralai/Mixtral-8x7B-Instruct-v0.1",
+    	messages=messages,
+    	max_tokens=500,
+    	stream=False
+    )
+    response_message = dict(response)["choices"][0]["message"]
+    messages.append(response_message)
+    return response_message["content"]
+
 
 # Micrófono
 FORMAT = pyaudio.paInt16
@@ -51,6 +94,8 @@ WAKEWORD_THRESHOLD = 0.06
 GREET_VOICELINES_PATH = "./hous_pregenerated_voicelines/greet/"
 GOODBYE_VOICELINES_PATH = "./hous_pregenerated_voicelines/goodbye/"
 WHOAMI_VOICELINES_PATH = "./hous_pregenerated_voicelines/whoami/"
+MUSIC_SEARCH_GREET_VOICELINES_PATH = "./hous_pregenerated_voicelines/music_greet/"
+MUSIC_SEARCH_VOICELINES_PATH = "./hous_pregenerated_voicelines/music_search/"
 SEARCH_VOICELINES_PATH = "./hous_pregenerated_voicelines/search_start/"
 
 # TTS
@@ -79,7 +124,7 @@ def get_city_time(timezone):
         # Format city name for URL (e.g., New York as America/New_York)
         timezone = timezone.replace(" ", "_")
         url = f"https://timeapi.io/api/time/current/zone?timezone={timezone}"
-        
+
         # Send request to the World Time API
         response = requests.get(url)
         response.raise_for_status()  # Raise an error for bad responses
@@ -88,7 +133,7 @@ def get_city_time(timezone):
         data = response.json()
         answer = f"Son las {data['hour']} horas con {data['minute']} minutos del {data['day']} de {months[data['month'] - 1]} del {data['year']}"
         return answer
-        
+
 
     except (requests.RequestException, KeyError) as e:
         # Handle errors by falling back to the device's local time
@@ -102,7 +147,7 @@ def get_city_date(timezone):
         # Format city name for URL (e.g., New York as America/New_York)
         timezone = timezone.replace(" ", "_")
         url = f"https://timeapi.io/api/time/current/zone?timezone={timezone}"
-        
+
         # Send request to the World Time API
         response = requests.get(url)
         response.raise_for_status()  # Raise an error for bad responses
@@ -111,7 +156,7 @@ def get_city_date(timezone):
         data = response.json()
         answer = f"Hoy es el {data['day']} de {months[data['month'] - 1]} del {data['year']}"
         return answer
-        
+
 
     except (requests.RequestException, KeyError) as e:
         # Handle errors by falling back to the device's local time
@@ -134,9 +179,7 @@ except requests.RequestException as e:
     print("Error al obtener la información de ubicación:", e)
     USER_CITY = None
 
-def write_meta(prompt: str):
-    stream = ai.prompt(message=prompt, new_conversation=False)
-    return stream['message']
+
 
 def get_weather(city):
     if city is None:
@@ -153,6 +196,7 @@ import os
 import pygame
 
 def download_music(query):
+
     """Busca y descarga el primer resultado de YouTube en MP3."""
     # Crea la carpeta music_download si no existe
     music_folder = 'music_download'
@@ -161,9 +205,9 @@ def download_music(query):
 
     # Define la plantilla de salida para que use el nombre de la consulta
     ydl_opts = {
-        'ffmpeg_location': r'C:\Users\danie\Desktop\ffmpeg\bin',  # Cambia esta ruta si es necesario
+        #'ffmpeg_location': r'C:\Users\danie\Desktop\ffmpeg\bin',  # Cambia esta ruta si es necesario
         'format': 'bestaudio/best',
-        'outtmpl': os.path.join(music_folder, f'{query}'),  # Guarda con el nombre de la consulta
+        'outtmpl': os.path.join(music_folder, f'{(query).replace(" ","_")}'),  # Guarda con el nombre de la consulta
         'postprocessors': [{
             'key': 'FFmpegExtractAudio',
             'preferredcodec': 'mp3',
@@ -176,15 +220,15 @@ def download_music(query):
 def play_downloaded_music(query):
     """Reproduce el archivo MP3 descargado usando pygame."""
     # Crea la ruta del archivo usando el nombre de la consulta
-    music_folder = 'music_download'
-    file_path = os.path.join(music_folder, f'{query}.mp3')
-    
+    file_path = 'music_download/' +f'{(query).replace(" ","_")}.mp3'
+
     if os.path.exists(file_path):
-        pygame.mixer.init()
-        pygame.mixer.music.load(file_path)
-        pygame.mixer.music.play()
-        while pygame.mixer.music.get_busy():
-            pygame.time.Clock().tick(10)  # Espera mientras se reproduce  
+        if platform.system() == 'Darwin': # macOS
+            subprocess.call(('open', file_path))
+        elif platform.system() == 'Windows': # Windows
+            subprocess.call(('start', file_path), shell=True)
+        else: # linux variants
+            subprocess.call(('xdg-open', file_path))
     else:
         print(f"No se encontró el archivo: {file_path}")
 
@@ -276,7 +320,7 @@ def whisper_listen_and_intent(duration):
 
     text = unidecode.unidecode(text)
     text = text.lower()
-    
+
     intent = search_keyword(text)
     if intent is not None:
         act_on_intent(intent)
@@ -294,7 +338,7 @@ def act_on_intent(intent):
         save_video()
     elif intent == "search":
         play_audio_file(select_random_file_from_folder(SEARCH_VOICELINES_PATH))
-        message = write_meta(whisper_listen_once(5))
+        message = write_mistral(whisper_listen_once(5))
         tts(message)
     elif intent == "weather":
         tts(get_weather(USER_CITY))
@@ -305,9 +349,11 @@ def act_on_intent(intent):
     elif intent == "whoami":
         play_audio_file(select_random_file_from_folder(WHOAMI_VOICELINES_PATH))
     elif intent == "music":
+        play_audio_file(select_random_file_from_folder(MUSIC_SEARCH_GREET_VOICELINES_PATH))
         messageMusic = whisper_listen_once(5)  # Obtiene el título o frase para la búsqueda
+        play_audio_file(select_random_file_from_folder(MUSIC_SEARCH_VOICELINES_PATH),blocking=False)
         download_music(messageMusic)
-        play_downloaded_music(messageMusic) 
+        play_downloaded_music(messageMusic)
 
 def tts(text):
     audio_array = tts_model.tts(text, speaker_wav=speaker_wav, language='es')
