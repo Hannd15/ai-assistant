@@ -150,11 +150,12 @@ def get_weather(city):
 
 import yt_dlp
 import os
-import simpleaudio as sa
+import pygame
 
 def download_music(query):
     """Busca y descarga el primer resultado de YouTube en MP3."""
     ydl_opts = {
+        'ffmpeg_location': r'C:\Users\danie\Desktop\ffmpeg\bin',  # Cambia esta ruta si es necesario
         'format': 'bestaudio/best',
         'outtmpl': 'downloaded_music.mp3',
         'postprocessors': [{
@@ -164,16 +165,17 @@ def download_music(query):
         }],
     }
     with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-        print(f"Buscando y descargando '{query}' en YouTube...")
         ydl.download([f"ytsearch:{query}"])
 
 def play_downloaded_music():
-    """Reproduce el archivo MP3 descargado."""
+    """Reproduce el archivo MP3 descargado usando pygame."""
     if os.path.exists('downloaded_music.mp3'):
-        wave_obj = sa.WaveObject.from_wave_file('downloaded_music.mp3')
-        play_obj = wave_obj.play()
-        play_obj.wait_done()  # Espera a que termine la reproducción
-        
+        pygame.mixer.init()
+        pygame.mixer.music.load('downloaded_music.mp3')
+        pygame.mixer.music.play()
+        while pygame.mixer.music.get_busy():
+            pygame.time.Clock().tick(10)  # Espera mientras se reproduce  
+
 def capture_screen():
     """Continuously capture screen and add frames to the buffer."""
     with mss.mss() as sct:
