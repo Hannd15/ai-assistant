@@ -154,10 +154,16 @@ import pygame
 
 def download_music(query):
     """Busca y descarga el primer resultado de YouTube en MP3."""
+    # Crea la carpeta music_download si no existe
+    music_folder = 'music_download'
+    if not os.path.exists(music_folder):
+        os.makedirs(music_folder)
+
+    # Define la plantilla de salida para que use el nombre de la consulta
     ydl_opts = {
         'ffmpeg_location': r'C:\Users\danie\Desktop\ffmpeg\bin',  # Cambia esta ruta si es necesario
         'format': 'bestaudio/best',
-        'outtmpl': 'downloaded_music.mp3',
+        'outtmpl': os.path.join(music_folder, f'{query}'),  # Guarda con el nombre de la consulta
         'postprocessors': [{
             'key': 'FFmpegExtractAudio',
             'preferredcodec': 'mp3',
@@ -167,14 +173,20 @@ def download_music(query):
     with yt_dlp.YoutubeDL(ydl_opts) as ydl:
         ydl.download([f"ytsearch:{query}"])
 
-def play_downloaded_music():
+def play_downloaded_music(query):
     """Reproduce el archivo MP3 descargado usando pygame."""
-    if os.path.exists('downloaded_music.mp3'):
+    # Crea la ruta del archivo usando el nombre de la consulta
+    music_folder = 'music_download'
+    file_path = os.path.join(music_folder, f'{query}.mp3')
+    
+    if os.path.exists(file_path):
         pygame.mixer.init()
-        pygame.mixer.music.load('downloaded_music.mp3')
+        pygame.mixer.music.load(file_path)
         pygame.mixer.music.play()
         while pygame.mixer.music.get_busy():
             pygame.time.Clock().tick(10)  # Espera mientras se reproduce  
+    else:
+        print(f"No se encontró el archivo: {file_path}")
 
 def capture_screen():
     """Continuously capture screen and add frames to the buffer."""
@@ -295,8 +307,7 @@ def act_on_intent(intent):
     elif intent == "music":
         messageMusic = whisper_listen_once(5)  # Obtiene el título o frase para la búsqueda
         download_music(messageMusic)
-        play_downloaded_music()
-
+        play_downloaded_music(messageMusic) 
 
 def tts(text):
     audio_array = tts_model.tts(text, speaker_wav=speaker_wav, language='es')
