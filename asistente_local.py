@@ -232,6 +232,17 @@ def play_downloaded_music(query):
     else:
         print(f"No se encontró el archivo: {file_path}")
 
+import shutil
+
+def delete_music_folder():
+    """Elimina la carpeta music_download y su contenido."""
+    music_folder = 'music_download'
+    if os.path.exists(music_folder):
+        shutil.rmtree(music_folder)
+        print("Carpeta music_download eliminada.")
+    else:
+        print("La carpeta music_download no existe.")
+
 def capture_screen():
     """Continuously capture screen and add frames to the buffer."""
     with mss.mss() as sct:
@@ -354,7 +365,8 @@ def act_on_intent(intent):
         play_audio_file(select_random_file_from_folder(MUSIC_SEARCH_VOICELINES_PATH),blocking=False)
         download_music(messageMusic)
         play_downloaded_music(messageMusic)
-
+        delete_music_folder()
+        
 def tts(text):
     audio_array = tts_model.tts(text, speaker_wav=speaker_wav, language='es')
 
