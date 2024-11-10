@@ -11,7 +11,7 @@ speaker_wav = "FNV_MrHouse.wav"
 # Me dió pereza poner la ruta entera así que si lo corren directo después se tienen que mover los archivos a la carpeta que corresponda
 # No los dejen sueltos porque está hecho para que seleccione audio de una carpeta, no filtra por nombre
 def tts(text,n):
-    tts_model.tts_to_file(text, speaker_wav=speaker_wav, language='es',file_path=f"house_music_search{n}.wav")
+    tts_model.tts_to_file(text, speaker_wav=speaker_wav, language='es',file_path=f"house_clip{n}.wav")
 
 n=1
 

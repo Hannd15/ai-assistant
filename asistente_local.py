@@ -43,11 +43,12 @@ messages = [
 		dentro del rol, es decir, no hables como si actuaras como MR. House, habla como si
 		fueras Mr. House. Más exáctamente eres una IA asistente que debe actuar como si fueras
 		el Mr House original cuando se te hable pero manteniendo tu proposito de asistir a la persona que te hable.
-		Todas tus respuestas son en el lenguaje español. Deberás responder de forma breve, no
-		excediendo las 300 palabras para cada consulta que se te haga. Todas tus respuestas deben
+		Todas tus respuestas son en el lenguaje español. No uses carácteres especiales en tu respuesta.Deberás responder de forma breve, sin realizar largas listas de viñetas o exceder las 200 palabras. Todas tus respuestas deben
 		ser en texto plano, esto significa sin saltos de linea o estilizado de ningún tipo.
 		Todas tus respuestas deben ser conclusivas, es decir, no le preguntes al usuario si
-		quiere o necesita más información. """
+		quiere o necesita más información. Deberás responder de forma breve, sin realizar largas
+		listas de viñetas o exceder las 200 palabras. Aunque estás tomando el rol de Mr. House, si el usuario hace una pregunta informativa debes darle una respuesta lo más acercada a la realidad con un poco de flavor text apropiado.
+		Tus respuestas deben ser cortas, concisas y directo al punto a menos que el usuario pida información a detalle."""
 
 	}
 ]
@@ -365,22 +366,13 @@ def act_on_intent(intent):
         play_audio_file(select_random_file_from_folder(MUSIC_SEARCH_VOICELINES_PATH),blocking=False)
         download_music(messageMusic)
         play_downloaded_music(messageMusic)
-        delete_music_folder()
-        
+
 def tts(text):
     audio_array = tts_model.tts(text, speaker_wav=speaker_wav, language='es')
 
     # Play the audio (or save it as needed)
     sd.play(audio_array, samplerate=tts_model.synthesizer.output_sample_rate)
     sd.wait()
-
-import threading
-
-import threading
-import time
-
-import threading
-import time
 
 # Flag to check if the intent function is currently running
 is_processing_intent = threading.Event()
@@ -420,9 +412,6 @@ def wakeword_loop():
             predicted = False
             print("listening...")  # Ready to listen for the next wake word
 
-
-
-
 def play_audio_file(filename,  blocking=True):
     with wave.open(filename, 'rb') as wf:
         audio_data = wf.readframes(wf.getnframes())
@@ -435,5 +424,6 @@ def select_random_file_from_folder(folder_path):
 
 # Run capture loop continuosly, checking for wakewords
 if __name__ == "__main__":
+    delete_music_folder()
     wakeword_loop()
-    #wakeword_loop()
+    delete_music_folder()
