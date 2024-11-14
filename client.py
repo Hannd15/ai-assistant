@@ -36,6 +36,7 @@ import json
 
 client = InferenceClient(api_key="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")
 
+# Prompt inicial
 messages = [
 	{
 		"role": "user",
@@ -56,6 +57,8 @@ messages = [
 
 	}
 ]
+
+# Se envía el prompt y se guarda junto con la respuesta de Mistral
 response = client.chat.completions.create(
     model="mistralai/Mixtral-8x7B-Instruct-v0.1",
 	messages=messages,
@@ -66,6 +69,7 @@ initial_prompt_confirmation = dict(response)["choices"][0]["message"]
 messages.append(initial_prompt_confirmation)
 
 def write_mistral(prompt: str):
+    """ Se le envía el prompt a Mistral junto con el historial de mensajes """
     message = {
         "role":"user",
         "content":prompt
@@ -83,7 +87,7 @@ def write_mistral(prompt: str):
     return response_message["content"]
 
 
-# Micrófono
+# Configuración del micrófono
 FORMAT = pyaudio.paInt16
 CHANNELS = 1
 SAMPLE_RATE = 16000
@@ -95,9 +99,12 @@ mic_stream = audio.open(format=FORMAT, channels=CHANNELS, rate=SAMPLE_RATE, inpu
 TTS_URL = "http://191.239.119.23:5000/tts"
 API_URL = "https://api-inference.huggingface.co/models/openai/whisper-large-v3"
 headers = {"Authorization": "Bearer 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"}
+
+# Umbrales de detección de las palabras de activación
 WAKEWORD_THRESHOLD = 0.06
 SLEEP_THRESHOLD = 0.06
 
+# Rutas de las lineas de voz
 GREET_VOICELINES_PATH = "./hous_pregenerated_voicelines/greet/"
 CLIP_VOICELINES_PATH = "./hous_pregenerated_voicelines/clip/"
 GOODBYE_VOICELINES_PATH = "./hous_pregenerated_voicelines/goodbye/"
@@ -112,24 +119,25 @@ REPEAT_VOICELINES_PATH = "./hous_pregenerated_voicelines/repeat/"
 #tts_model = TTS(model_name="tts_models/multilingual/multi-dataset/xtts_v2")
 #speaker_wav = "FNV_MrHouse.wav"  # Path to a sample of the target speaker's voice
 
-# WakeWord
+# Modelo de detección de palabras de activación
 owwModel = Model(wakeword_models=['house.tflite','adios.tflite'], inference_framework='tflite')
 
-# Configurable parameters
-# Automatically detect screen resolution
-with mss.mss() as sct:
-    screen_info = sct.monitors[1]  # Primary monitor
+# Configuración de parametros para la grabación de pantalla
+with mss.mss() as sct: # Detección automática de la resolución de la pantalla
+    screen_info = sct.monitors[1]
     WIDTH, HEIGHT = screen_info["width"], screen_info["height"]
-FPS = 30                          # Frames per second
-BUFFER_SECONDS = 30               # Duration of recording buffer in seconds
+FPS = 30
+BUFFER_SECONDS = 30
 
-# Initialize the rolling buffer
+# Buffer de grabación
 frame_buffer = deque(maxlen=BUFFER_SECONDS * FPS)
-buffer_lock = threading.Lock()    # Lock to safely copy the buffer
+buffer_lock = threading.Lock()
 
 
 months = ["Enero", "Febrero", "Marzo", "Abril", "Mayo", "Junio", "Julio", "Agosto", "Septiembre", "Octubre", "Noviembre", "Diciembre"]
 def get_city_time(timezone):
+    """ Consigue la hora del lugar en que se encuentra el usuario dependiendo de la zona horaria, en caso de un error de conección toma la hora del dispositivo """
+
     try:
         # Format city name for URL (e.g., New York as America/New_York)
         timezone = timezone.replace(" ", "_")
@@ -147,12 +155,14 @@ def get_city_time(timezone):
 
     except (requests.RequestException, KeyError) as e:
         # Handle errors by falling back to the device's local time
-        print(f"Could not get time for {timezone.replace('_', ' ')}. Error: {e}")
+        #print(f"Could not get time for {timezone.replace('_', ' ')}. Error: {e}")
         month = datetime.now().strftime("%m")
         device_time = datetime.now().strftime(f"Son las %H horas con %M minutos del %d de {months[int(month)-1]} del %Y")
         return device_time
 
 def get_city_date(timezone):
+    """ Consigue la fecha del lugar en que se encuentra el usuario dependiendo de la zona horaria, en caso de un error de conección toma la fecha del dispositivo """
+
     try:
         # Format city name for URL (e.g., New York as America/New_York)
         timezone = timezone.replace(" ", "_")
@@ -170,17 +180,16 @@ def get_city_date(timezone):
 
     except (requests.RequestException, KeyError) as e:
         # Handle errors by falling back to the device's local time
-        print(f"Could not get time for {timezone.replace('_', ' ')}. Error: {e}")
+        #print(f"Could not get time for {timezone.replace('_', ' ')}. Error: {e}")
         month = datetime.now().strftime("%m")
         device_time = datetime.now().strftime(f"Hoy es el %d de {months[int(month)-1]} del %Y")
         return device_time
 
-# Definimos la URL de la API
+# Se consigue la zona horaria y la ciudad del usuario
 ip  = requests.get('https://api.ipify.org').text
 url = f"http://ip-api.com/json/{ip}?lang=es"
 
 try:
-    # Realizamos la solicitud
     response = requests.get(url)
     data = response.json()
     USER_CITY = data['city']
@@ -189,9 +198,10 @@ except requests.RequestException as e:
     print("Error al obtener la información de ubicación:", e)
     USER_CITY = None
 
-
+translator = Translator(from_lang='en', to_lang='es')
 
 def get_weather(city):
+    """ Consigue el clima actual de la ciudad en la que se encuentra el usuario """
     if city is None:
         print("No se pudo obtener la ubicación del usuario.")
         return
@@ -228,7 +238,7 @@ def download_music(query):
         ydl.download([f"ytsearch:{query}"])
 
 def play_downloaded_music(query):
-    """Reproduce el archivo MP3 descargado usando pygame."""
+    """Reproduce el archivo MP3 descargado usando el reproductor por defecto del sistema """
     # Crea la ruta del archivo usando el nombre de la consulta
     file_path = 'music_download/' +f'{(query).replace(" ","_")}.mp3'
 
@@ -254,25 +264,22 @@ def delete_music_folder():
         print("La carpeta music_download no existe.")
 
 def capture_screen():
-    """Continuously capture screen and add frames to the buffer."""
+    """ Graba la pantalla y guarda la grabación en el buffer """
     with mss.mss() as sct:
         monitor = {"top": 0, "left": 0, "width": WIDTH, "height": HEIGHT}
         while True:
             start_time = time.time()
 
-            # Capture screen
             img = np.array(sct.grab(monitor))
             frame = cv2.cvtColor(img, cv2.COLOR_BGRA2BGR)
 
-    # Add frame to buffer with lock
             with buffer_lock:
                 frame_buffer.append(frame)
 
-            # Wait to achieve desired FPS
             time.sleep(max(1.0 / FPS - (time.time() - start_time), 0))
 
 def save_video(filename="clip"):
-    """Save frames from the buffer to a video file."""
+    """Guarda el buffer a un archivo de video"""
     with buffer_lock:
         frames_to_save = list(frame_buffer)
 
@@ -283,28 +290,28 @@ def save_video(filename="clip"):
     fourcc = cv2.VideoWriter_fourcc(*"mp4v")
     out = cv2.VideoWriter(filename, fourcc, FPS, (WIDTH, HEIGHT))
 
-    # Write buffered frames to video
     for frame in frames_to_save:
         out.write(frame)
 
     out.release()
-    print(f"Saved recording to {filename}")
+    print(f"Clip guardado como {filename}")
 
 # Run the screen capture in a separate thread
 capture_thread = threading.Thread(target=capture_screen, daemon=True)
 capture_thread.start()
 
-# Keywords
+# Dataframe de palabras clave
 keyword_actions = ["clip", "search","weather", "time","date", "whoami", "music"]
 keywords = [
-    ["clip", "busc", "clima", "hora", "fecha", "eres", "cancion"],
-    [None, "busq", None, None, "dia", None, "musi"],
+    ["clip", "busca", "clima", "hora", "fecha", "eres", "cancion"],
+    [None, "busqu", None, None, "dia", None, "musi"],
     [None, "consulta", None, None, "mes", None, None],
     [None, None, None, None, "ano", None, None],
 ]
 keyword_df = pd.DataFrame(keywords, columns=keyword_actions)
 
 def search_keyword(text):
+    """Itera por el dataframe de palabras clave buscando coincidencias"""
     text = unidecode.unidecode(text)
     text = text.lower()
     for index, row in keyword_df.iterrows():
@@ -316,27 +323,26 @@ def search_keyword(text):
 def record_audio_chunk(filename, duration):
     """Graba un fragmento de audio y lo guarda en un archivo WAV."""
     print("Grabando audio...")
-    # Graba el audio
     audio_data = sd.rec(int(duration * SAMPLE_RATE), samplerate=SAMPLE_RATE, channels=CHANNELS, dtype='int16')
-    sd.wait()  # Espera a que la grabación termine
+    sd.wait()
 
-    # Guarda el audio en un archivo WAV
     with wave.open(filename, 'wb') as wf:
         wf.setnchannels(CHANNELS)
-        wf.setsampwidth(2)  # 2 bytes para int16
+        wf.setsampwidth(2)
         wf.setframerate(SAMPLE_RATE)
         wf.writeframes(audio_data.tobytes())
 
     return filename
 
 def transcribe_audio(wav_buffer):
+    """Envía el audio a la api de Whisper y retorna el texto"""
     with open(wav_buffer, "rb") as f:
         data = f.read()
     response = requests.post(API_URL, headers=headers, data=data)
     return response.json()
 
 def whisper_listen_and_intent(duration):
-    # Grabar y transcribir cada chunk de audio
+    """Graba audio por la duración indicada, lo transcribe y busca las palabras clave"""
     audio_chunk = record_audio_chunk(filename="buffer.wav", duration=duration)
     print("Procesando...")
     try:
@@ -347,6 +353,8 @@ def whisper_listen_and_intent(duration):
         intent = search_keyword(text)
         if intent is not None:
             act_on_intent(intent)
+        else:
+            play_audio_file(select_random_file_from_folder(REPEAT_VOICELINES_PATH))
     except:
         play_audio_file(select_random_file_from_folder(REPEAT_VOICELINES_PATH))
 
@@ -354,7 +362,7 @@ def whisper_listen_and_intent(duration):
 
 
 def whisper_listen_once(duration):
-    # Grabar y transcribir cada chunk de audio
+    """Graba audio por la duración indicada, lo transcribe y retorna el texto"""
     audio_chunk = record_audio_chunk(filename="buffer.wav", duration=duration)
     try:
         text = transcribe_audio(audio_chunk)['text']
@@ -366,6 +374,7 @@ def whisper_listen_once(duration):
 
 
 def act_on_intent(intent):
+    """Dependiendo de la palabre clave detectada toma un curso de acción"""
     print("Intent: "+intent)
     if intent == "clip":
         save_video()
@@ -388,7 +397,7 @@ def act_on_intent(intent):
     elif intent == "whoami":
         play_audio_file(select_random_file_from_folder(WHOAMI_VOICELINES_PATH))
     elif intent == "music":
-        play_audio_file(select_random_file_from_folder(MUSIC_SEARCH_GREET_VOICELINES_PATH),blocking=False)
+        play_audio_file(select_random_file_from_folder(MUSIC_SEARCH_GREET_VOICELINES_PATH))
         messageMusic = whisper_listen_once(5)  # Obtiene el título o frase para la búsqueda
         if messageMusic:
             play_audio_file(select_random_file_from_folder(MUSIC_SEARCH_VOICELINES_PATH),blocking=False)
@@ -396,22 +405,20 @@ def act_on_intent(intent):
             play_downloaded_music(messageMusic)
 
 def tts(text):
+    """Consigue el audio generado para el texto ingresado"""
     body = {"text":text}
     print("Procesando respuesta")
     response = requests.post(TTS_URL,json=body)
 
     if response.status_code == 200:
-        # Load audio data from response content
         audio_data, samplerate = sf.read(io.BytesIO(response.content), dtype='int16')
 
-        # Play the audio
         sd.play(audio_data, samplerate=samplerate)
         sd.wait()
     else:
         print("Failed to get TTS audio:", response.status_code, response.text)
 
 
-# Flag to check if the intent function is currently running
 is_processing_intent = threading.Event()
 
 def process_intent():
@@ -421,6 +428,7 @@ def process_intent():
     print("Intent processing completed.")
 
 def wakeword_loop():
+    """Escucha por las palabras de activación"""
     print("listening...")
     predicted = False
     intent_thread = None  # Initialize intent_thread to None
@@ -436,24 +444,21 @@ def wakeword_loop():
             play_audio_file(select_random_file_from_folder(GOODBYE_VOICELINES_PATH))
             return 0
 
-        # Check if the wake word threshold is met and not already processing intent
         if prediction['house'] > WAKEWORD_THRESHOLD and not is_processing_intent.is_set():
             predicted = True
-            is_processing_intent.set()  # Mark as processing intent
+            is_processing_intent.set()
             print("Wake word detected. Processing intent...")
 
-            # Start the intent processing in a new thread
             intent_thread = threading.Thread(target=process_intent)
             intent_thread.start()
 
-        # Check if intent_thread exists and is done
         if intent_thread and not intent_thread.is_alive() and predicted:
-            # Reset flags once intent processing is complete
             is_processing_intent.clear()
             predicted = False
-            print("listening...")  # Ready to listen for the next wake word
+            print("listening...")
 
 def play_audio_file(filename,  blocking=True):
+    """Reproduce un archivo de audio sin interfáz gráfica"""
     with wave.open(filename, 'rb') as wf:
         audio_data = wf.readframes(wf.getnframes())
         audio_array = np.frombuffer(audio_data, dtype=np.int16)
@@ -463,8 +468,6 @@ def select_random_file_from_folder(folder_path):
     files = [f for f in os.listdir(folder_path) if os.path.isfile(os.path.join(folder_path, f))]
     return folder_path + (random.choice(files))
 
-# Run capture loop continuosly, checking for wakewords
 if __name__ == "__main__":
-    delete_music_folder()
     wakeword_loop()
     delete_music_folder()
