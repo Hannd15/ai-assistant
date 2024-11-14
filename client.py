@@ -96,6 +96,7 @@ TTS_URL = "http://191.239.119.23:5000/tts"
 API_URL = "https://api-inference.huggingface.co/models/openai/whisper-large-v3"
 headers = {"Authorization": "Bearer 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"}
 WAKEWORD_THRESHOLD = 0.06
+SLEEP_THRESHOLD = 0.06
 
 GREET_VOICELINES_PATH = "./hous_pregenerated_voicelines/greet/"
 CLIP_VOICELINES_PATH = "./hous_pregenerated_voicelines/clip/"
@@ -104,13 +105,15 @@ WHOAMI_VOICELINES_PATH = "./hous_pregenerated_voicelines/whoami/"
 MUSIC_SEARCH_GREET_VOICELINES_PATH = "./hous_pregenerated_voicelines/music_greet/"
 MUSIC_SEARCH_VOICELINES_PATH = "./hous_pregenerated_voicelines/music_search/"
 SEARCH_VOICELINES_PATH = "./hous_pregenerated_voicelines/search_start/"
+WAIT_VOICELINES_PATH = "./hous_pregenerated_voicelines/wait/"
+REPEAT_VOICELINES_PATH = "./hous_pregenerated_voicelines/repeat/"
 
 # TTS
 #tts_model = TTS(model_name="tts_models/multilingual/multi-dataset/xtts_v2")
 #speaker_wav = "FNV_MrHouse.wav"  # Path to a sample of the target speaker's voice
 
 # WakeWord
-owwModel = Model(wakeword_models=['house.tflite'], inference_framework='tflite')
+owwModel = Model(wakeword_models=['house.tflite','adios.tflite'], inference_framework='tflite')
 
 # Configurable parameters
 # Automatically detect screen resolution
@@ -295,9 +298,9 @@ capture_thread.start()
 keyword_actions = ["clip", "search","weather", "time","date", "whoami", "music"]
 keywords = [
     ["clip", "busc", "clima", "hora", "fecha", "eres", "cancion"],
-    [None, "busq", None, None, "dia", None, "musica"],
-    [None, "consulta", None, None, "mes", None, "reproducir"],
-    [None, None, None, None, "ano", None, "sonido"],
+    [None, "busq", None, None, "dia", None, "musi"],
+    [None, "consulta", None, None, "mes", None, None],
+    [None, None, None, None, "ano", None, None],
 ]
 keyword_df = pd.DataFrame(keywords, columns=keyword_actions)
 
@@ -336,22 +339,31 @@ def whisper_listen_and_intent(duration):
     # Grabar y transcribir cada chunk de audio
     audio_chunk = record_audio_chunk(filename="buffer.wav", duration=duration)
     print("Procesando...")
-    text = transcribe_audio(audio_chunk)['text']
+    try:
+        text = transcribe_audio(audio_chunk)['text']
+        text = unidecode.unidecode(text)
+        text = text.lower()
 
-    text = unidecode.unidecode(text)
-    text = text.lower()
+        intent = search_keyword(text)
+        if intent is not None:
+            act_on_intent(intent)
+    except:
+        play_audio_file(select_random_file_from_folder(REPEAT_VOICELINES_PATH))
 
-    intent = search_keyword(text)
-    if intent is not None:
-        act_on_intent(intent)
+
+
 
 def whisper_listen_once(duration):
     # Grabar y transcribir cada chunk de audio
     audio_chunk = record_audio_chunk(filename="buffer.wav", duration=duration)
-    text = transcribe_audio(audio_chunk)['text']
-    text = unidecode.unidecode(text)
-    text = text.lower()
-    return text
+    try:
+        text = transcribe_audio(audio_chunk)['text']
+        text = unidecode.unidecode(text)
+        text = text.lower()
+        return text
+    except:
+        play_audio_file(select_random_file_from_folder(REPEAT_VOICELINES_PATH))
+
 
 def act_on_intent(intent):
     print("Intent: "+intent)
@@ -360,22 +372,28 @@ def act_on_intent(intent):
         play_audio_file(select_random_file_from_folder(CLIP_VOICELINES_PATH))
     elif intent == "search":
         play_audio_file(select_random_file_from_folder(SEARCH_VOICELINES_PATH),blocking=False)
-        message = write_mistral(whisper_listen_once(6))
-        tts(message)
+        stt = whisper_listen_once(6)
+        if stt:
+            message = write_mistral(stt)
+            tts(message)
     elif intent == "weather":
+        play_audio_file(select_random_file_from_folder(WAIT_VOICELINES_PATH),blocking=False)
         tts(get_weather(USER_CITY))
     elif intent == "time":
+        play_audio_file(select_random_file_from_folder(WAIT_VOICELINES_PATH),blocking=False)
         tts(get_city_time(USER_TIMEZONE))
     elif intent == "date":
+        play_audio_file(select_random_file_from_folder(WAIT_VOICELINES_PATH),blocking=False)
         tts(get_city_date(USER_TIMEZONE))
     elif intent == "whoami":
         play_audio_file(select_random_file_from_folder(WHOAMI_VOICELINES_PATH))
     elif intent == "music":
-        play_audio_file(select_random_file_from_folder(MUSIC_SEARCH_GREET_VOICELINES_PATH))
+        play_audio_file(select_random_file_from_folder(MUSIC_SEARCH_GREET_VOICELINES_PATH),blocking=False)
         messageMusic = whisper_listen_once(5)  # Obtiene el título o frase para la búsqueda
-        play_audio_file(select_random_file_from_folder(MUSIC_SEARCH_VOICELINES_PATH),blocking=False)
-        download_music(messageMusic)
-        play_downloaded_music(messageMusic)
+        if messageMusic:
+            play_audio_file(select_random_file_from_folder(MUSIC_SEARCH_VOICELINES_PATH),blocking=False)
+            download_music(messageMusic)
+            play_downloaded_music(messageMusic)
 
 def tts(text):
     body = {"text":text}
@@ -412,10 +430,14 @@ def wakeword_loop():
         audio = np.frombuffer(mic_stream.read(CHUNK), dtype=np.int16)
 
         # Predict using the wake word model
-        prediction = owwModel.predict(audio)['house']
+        prediction = owwModel.predict(audio)
+
+        if prediction['adios'] > SLEEP_THRESHOLD:
+            play_audio_file(select_random_file_from_folder(GOODBYE_VOICELINES_PATH))
+            return 0
 
         # Check if the wake word threshold is met and not already processing intent
-        if prediction > WAKEWORD_THRESHOLD and not is_processing_intent.is_set():
+        if prediction['house'] > WAKEWORD_THRESHOLD and not is_processing_intent.is_set():
             predicted = True
             is_processing_intent.set()  # Mark as processing intent
             print("Wake word detected. Processing intent...")
