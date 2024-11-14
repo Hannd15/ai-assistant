@@ -417,6 +417,7 @@ def tts(text):
         sd.wait()
     else:
         print("Failed to get TTS audio:", response.status_code, response.text)
+        print(text)
 
 
 is_processing_intent = threading.Event()
