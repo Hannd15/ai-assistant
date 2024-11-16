@@ -97,12 +97,12 @@ mic_stream = audio.open(format=FORMAT, channels=CHANNELS, rate=SAMPLE_RATE, inpu
 
 # APIs
 TTS_URL = "http://191.239.119.23:5000/tts"
-API_URL = "https://api-inference.huggingface.co/models/openai/whisper-large-v3"
+API_URL = "https://api-inference.huggingface.co/models/openai/whisper-large-v3-turbo"
 headers = {"Authorization": "Bearer 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"}
 
 # Umbrales de detección de las palabras de activación
 WAKEWORD_THRESHOLD = 0.06
-SLEEP_THRESHOLD = 0.06
+SLEEP_THRESHOLD = 0.08
 
 # Rutas de las lineas de voz
 GREET_VOICELINES_PATH = "./hous_pregenerated_voicelines/greet/"
@@ -366,6 +366,7 @@ def whisper_listen_once(duration):
     audio_chunk = record_audio_chunk(filename="buffer.wav", duration=duration)
     try:
         text = transcribe_audio(audio_chunk)['text']
+        print("texto entendido: "+text)
         text = unidecode.unidecode(text)
         text = text.lower()
         return text
@@ -375,15 +376,17 @@ def whisper_listen_once(duration):
 
 def act_on_intent(intent):
     """Dependiendo de la palabre clave detectada toma un curso de acción"""
-    print("Intent: "+intent)
+    print("Intención: "+intent)
     if intent == "clip":
+        play_audio_file(select_random_file_from_folder(CLIP_VOICELINES_PATH),blocking=False)
         save_video()
-        play_audio_file(select_random_file_from_folder(CLIP_VOICELINES_PATH))
     elif intent == "search":
-        play_audio_file(select_random_file_from_folder(SEARCH_VOICELINES_PATH),blocking=False)
+        play_audio_file(select_random_file_from_folder(SEARCH_VOICELINES_PATH))
         stt = whisper_listen_once(6)
         if stt:
             message = write_mistral(stt)
+            print("Respuesta: "+message)
+            print("Generando voz...")
             tts(message)
     elif intent == "weather":
         play_audio_file(select_random_file_from_folder(WAIT_VOICELINES_PATH),blocking=False)
@@ -407,7 +410,6 @@ def act_on_intent(intent):
 def tts(text):
     """Consigue el audio generado para el texto ingresado"""
     body = {"text":text}
-    print("Procesando respuesta")
     response = requests.post(TTS_URL,json=body)
 
     if response.status_code == 200:
@@ -440,15 +442,16 @@ def wakeword_loop():
 
         # Predict using the wake word model
         prediction = owwModel.predict(audio)
+        #print(prediction)
 
         if prediction['adios'] > SLEEP_THRESHOLD:
             play_audio_file(select_random_file_from_folder(GOODBYE_VOICELINES_PATH))
-            return 0
+            delete_music_folder()
+            os._exit(0)
 
         if prediction['house'] > WAKEWORD_THRESHOLD and not is_processing_intent.is_set():
             predicted = True
             is_processing_intent.set()
-            print("Wake word detected. Processing intent...")
 
             intent_thread = threading.Thread(target=process_intent)
             intent_thread.start()
@@ -471,4 +474,3 @@ def select_random_file_from_folder(folder_path):
 
 if __name__ == "__main__":
     wakeword_loop()
-    delete_music_folder()
