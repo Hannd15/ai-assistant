@@ -575,6 +575,7 @@ def wakeword_loop():
             play_audio_file(select_random_file_from_folder(GOODBYE_VOICELINES_PATH))
             delete_music_folder()
             stop_pygame()
+
             sys.exit()
 
         if prediction['house'] > WAKEWORD_THRESHOLD and not is_processing_intent.is_set():
