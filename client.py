@@ -25,6 +25,7 @@ import requests
 import wave
 import audioread
 import time
+import pygame
 
 from translate import Translator
 
@@ -32,6 +33,7 @@ from datetime import datetime
 
 from huggingface_hub import InferenceClient
 import json
+import math
 
 
 client = InferenceClient(api_key="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")
@@ -133,6 +135,106 @@ BUFFER_SECONDS = 30
 frame_buffer = deque(maxlen=BUFFER_SECONDS * FPS)
 buffer_lock = threading.Lock()
 
+import pygame
+import sys
+
+import pygame
+import sys
+import threading
+
+# Initialize pygame
+pygame.init()
+
+# Configure the window
+ancho, alto = 800, 600
+ventana = pygame.display.set_mode((ancho, alto))
+pygame.display.set_caption('Mr. House')
+
+# Load images
+disconnected = pygame.image.load('images/connection_lost.png')
+lit_up = pygame.image.load('images/lit_up_house.png')
+neutral = pygame.image.load('images/house.png')
+freaky = pygame.image.load('images/freaky_house.jpg')
+
+ventana.fill((255, 255, 255))  # White background
+
+# Global state and lock for thread safety
+state = "disconnected"  # Possible states: 'talk', 'disconnected', 'idle'
+state_lock = threading.Lock()
+running = True
+
+# Functions to change the state
+def set_talk():
+    global state
+    with state_lock:
+        state = "talk"
+
+def set_disconnected():
+    global state
+    with state_lock:
+        state = "disconnected"
+
+def set_idle():
+    global state
+    with state_lock:
+        state = "idle"
+
+def stop_pygame():
+    global running
+    running = False
+
+# Display functions
+def show_disconnected():
+    ventana.blit(disconnected, (ancho // 2 - disconnected.get_width() // 2, alto // 2 - disconnected.get_height() // 2))
+
+def show_neutral():
+    ventana.blit(neutral, (ancho // 2 - neutral.get_width() // 2, alto // 2 - neutral.get_height() // 2))
+
+def show_lit_up():
+    ventana.blit(lit_up, (ancho // 2 - lit_up.get_width() // 2, alto // 2 - lit_up.get_height() // 2))
+
+# Main loop
+def game_loop():
+    global state
+    global running
+    clock = pygame.time.Clock()
+    talk_toggle = True
+
+    while running:
+        # Handle events
+        for event in pygame.event.get():
+            if event.type == pygame.QUIT:
+                running = False
+
+        ventana.fill((255, 255, 255))  # Clear the screen
+
+        # Determine the state to display
+        with state_lock:
+            current_state = state
+
+        if current_state == "talk":
+            # Alternate randomly between lit_up and neutral
+            show_lit_up()
+            pygame.display.flip()
+            random_interval = random.randint(50, 300)  # Random interval in milliseconds
+            pygame.time.wait(random_interval)
+
+            ventana.fill((255, 255, 255))  # Clear the screen
+            show_neutral()
+            pygame.display.flip()
+            random_interval = random.randint(50, 300)  # Random interval in milliseconds
+            pygame.time.wait(random_interval)
+        elif current_state == "disconnected":
+            show_disconnected()
+        elif current_state == "idle":
+            show_neutral()
+
+        # Update the display if not in "talk" mode
+        if current_state != "talk":
+            pygame.display.flip()
+            clock.tick(30)  # Limit FPS
+
+
 
 months = ["Enero", "Febrero", "Marzo", "Abril", "Mayo", "Junio", "Julio", "Agosto", "Septiembre", "Octubre", "Noviembre", "Diciembre"]
 def get_city_time(timezone):
@@ -149,7 +251,7 @@ def get_city_time(timezone):
 
         # Parse response data
         data = response.json()
-        answer = f"Son las {data['hour']} horas con {data['minute']} minutos del {data['day']} de {months[data['month'] - 1]} del {data['year']}"
+        answer = f"Son las {data['hour']} horas con {data['minute']} minutos"
         return answer
 
 
@@ -185,11 +287,11 @@ def get_city_date(timezone):
         device_time = datetime.now().strftime(f"Hoy es el %d de {months[int(month)-1]} del %Y")
         return device_time
 
-# Se consigue la zona horaria y la ciudad del usuario
-ip  = requests.get('https://api.ipify.org').text
-url = f"http://ip-api.com/json/{ip}?lang=es"
 
 try:
+    # Se consigue la zona horaria y la ciudad del usuario
+    ip  = requests.get('https://api.ipify.org').text
+    url = f"http://ip-api.com/json/{ip}?lang=es"
     response = requests.get(url)
     data = response.json()
     USER_CITY = data['city']
@@ -355,7 +457,8 @@ def whisper_listen_and_intent(duration):
             act_on_intent(intent)
         else:
             play_audio_file(select_random_file_from_folder(REPEAT_VOICELINES_PATH))
-    except:
+    except Exception as e:
+        print(e)
         play_audio_file(select_random_file_from_folder(REPEAT_VOICELINES_PATH))
 
 
@@ -378,10 +481,14 @@ def act_on_intent(intent):
     """Dependiendo de la palabre clave detectada toma un curso de acción"""
     print("Intención: "+intent)
     if intent == "clip":
-        play_audio_file(select_random_file_from_folder(CLIP_VOICELINES_PATH),blocking=False)
+        set_talk()
+        play_audio_file(select_random_file_from_folder(CLIP_VOICELINES_PATH))
+        set_idle()
         save_video()
     elif intent == "search":
+        set_talk()
         play_audio_file(select_random_file_from_folder(SEARCH_VOICELINES_PATH))
+        set_idle()
         stt = whisper_listen_once(6)
         if stt:
             message = write_mistral(stt)
@@ -389,50 +496,70 @@ def act_on_intent(intent):
             print("Generando voz...")
             tts(message)
     elif intent == "weather":
-        play_audio_file(select_random_file_from_folder(WAIT_VOICELINES_PATH),blocking=False)
+        set_talk()
+        play_audio_file(select_random_file_from_folder(WAIT_VOICELINES_PATH))
+        set_idle()
         tts(get_weather(USER_CITY))
     elif intent == "time":
-        play_audio_file(select_random_file_from_folder(WAIT_VOICELINES_PATH),blocking=False)
+        set_talk()
+        play_audio_file(select_random_file_from_folder(WAIT_VOICELINES_PATH))
+        set_idle()
         tts(get_city_time(USER_TIMEZONE))
     elif intent == "date":
-        play_audio_file(select_random_file_from_folder(WAIT_VOICELINES_PATH),blocking=False)
+        set_talk()
+        play_audio_file(select_random_file_from_folder(WAIT_VOICELINES_PATH))
+        set_idle()
         tts(get_city_date(USER_TIMEZONE))
     elif intent == "whoami":
+        set_talk()
         play_audio_file(select_random_file_from_folder(WHOAMI_VOICELINES_PATH))
+        set_idle()
     elif intent == "music":
+        set_talk()
         play_audio_file(select_random_file_from_folder(MUSIC_SEARCH_GREET_VOICELINES_PATH))
+        set_idle()
         messageMusic = whisper_listen_once(5)  # Obtiene el título o frase para la búsqueda
         if messageMusic:
-            play_audio_file(select_random_file_from_folder(MUSIC_SEARCH_VOICELINES_PATH),blocking=False)
+            set_talk()
+            play_audio_file(select_random_file_from_folder(MUSIC_SEARCH_VOICELINES_PATH))
+            set_idle()
             download_music(messageMusic)
             play_downloaded_music(messageMusic)
 
 def tts(text):
     """Consigue el audio generado para el texto ingresado"""
+    print("Respuesta: "+text)
     body = {"text":text}
-    response = requests.post(TTS_URL,json=body)
+    try:
+        response = requests.post(TTS_URL,json=body)
+        if response.status_code == 200:
+            audio_data, samplerate = sf.read(io.BytesIO(response.content), dtype='int16')
 
-    if response.status_code == 200:
-        audio_data, samplerate = sf.read(io.BytesIO(response.content), dtype='int16')
+            set_talk()
+            sd.play(audio_data, samplerate=samplerate)
+            sd.wait()
+            set_idle()
+        else:
+            print("Failed to get TTS audio:", response.status_code, response.text)
 
-        sd.play(audio_data, samplerate=samplerate)
-        sd.wait()
-    else:
-        print("Failed to get TTS audio:", response.status_code, response.text)
-        print(text)
+    except:
+        print("Sin conexión a la API")
+
+
 
 
 is_processing_intent = threading.Event()
 
 def process_intent():
     """Function to handle intent processing in a separate thread."""
+    set_idle()
     play_audio_file(select_random_file_from_folder(GREET_VOICELINES_PATH))
     whisper_listen_and_intent(3)
     print("Intent processing completed.")
 
 def wakeword_loop():
     """Escucha por las palabras de activación"""
-    print("listening...")
+    print("Esperando...")
     predicted = False
     intent_thread = None  # Initialize intent_thread to None
 
@@ -447,7 +574,8 @@ def wakeword_loop():
         if prediction['adios'] > SLEEP_THRESHOLD:
             play_audio_file(select_random_file_from_folder(GOODBYE_VOICELINES_PATH))
             delete_music_folder()
-            os._exit(0)
+            stop_pygame()
+            sys.exit()
 
         if prediction['house'] > WAKEWORD_THRESHOLD and not is_processing_intent.is_set():
             predicted = True
@@ -459,7 +587,8 @@ def wakeword_loop():
         if intent_thread and not intent_thread.is_alive() and predicted:
             is_processing_intent.clear()
             predicted = False
-            print("listening...")
+            set_disconnected()
+            print("Esperando...")
 
 def play_audio_file(filename,  blocking=True):
     """Reproduce un archivo de audio sin interfáz gráfica"""
@@ -473,4 +602,5 @@ def select_random_file_from_folder(folder_path):
     return folder_path + (random.choice(files))
 
 if __name__ == "__main__":
-    wakeword_loop()
+    threading.Thread(target=wakeword_loop,daemon=True).start()
+    game_loop()
